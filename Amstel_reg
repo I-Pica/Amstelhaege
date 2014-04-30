@@ -1,0 +1,557 @@
+# Amstelhaege Heuristieken 2014
+
+import math
+import random
+import time
+from Tkinter import *
+import pylab
+import numpy as np
+import matplotlib.pyplot as plt
+from numpy import arange,array,ones,linalg
+from pylab import plot,show
+
+
+BOTTOMLEFT, BOTTOMRIGHT = 0, 1
+TOPLEFT, TOPRIGHT = 2, 3
+
+class AmstelVisualization:
+    def __init__(self, houseList, width, height, vrij, value):
+        "Initializes a visualization with the specified parameters."
+        # Number of seconds to pause after each frame
+        self.max_dim = max(width, height)
+        self.width = width
+        self.height = height
+        self.houses = houseList
+
+        # Initialize a drawing surface
+        self.master = Tk()
+        self.w = Canvas(self.master, width=1000, height=700)
+        self.w.pack()
+        self.master.update()
+
+        # Draw a backing and lines
+        x1, y1 = self._map_coords(0, 0)
+        x2, y2 = self._map_coords(width, height)
+        self.w.create_rectangle(x1, y1, x2, y2, fill = "white")
+        for house in houseList:
+            cord1 = house.getPosition()[0]
+            cord2 = house.getPosition()[3]
+            x1, y1 = self._map_coords(cord1.getX(), cord1.getY())
+            x2, y2 = self._map_coords(cord2.getX(), cord2.getY())
+            space = house.minSpace
+            vsx1, vsy1 = self._map_coords(cord1.getX() - space, cord1.getY() - space)
+            vsx2, vsy2 = self._map_coords(cord2.getX() + space, cord2.getY() + space)
+            self.w.create_rectangle(vsx1, vsy1, vsx2, vsy2)
+            if house.houseType == "eengezins":
+                self.w.create_rectangle(x1, y1, x2, y2, fill="blue")
+            elif house.houseType == "bungalow":
+                self.w.create_rectangle(x1, y1, x2, y2, fill="red")
+            elif house.houseType == "maison":
+                self.w.create_rectangle(x1, y1, x2, y2, fill="green")
+
+        #Celculate distances to center
+        totalCenterDist = round(calcTotalCenterDist(houseList, "total"), 2)
+
+        # Draw some status text
+        self.text = self.w.create_text(25, 0, anchor=NW,
+                                       text=self._status_string(vrij, value, totalCenterDist))
+        self.time = 0
+        self.master.update()
+
+    def _map_coords(self, y, x):
+        "Maps grid positions to window positions (in pixels)."
+        return (350 + 900 * ((x - self.width / 2.0) / self.max_dim),
+                250 + 900 * ((self.height / 2.0 - y) / self.max_dim))
+    
+    def _status_string(self, vrij, value, totalCenterDist):
+        "Returns an appropriate status string to print."
+        return ("Vrij:", vrij, "Value:", value, "CenterDist:", totalCenterDist)
+    
+def minDistance(buildingA, buildingB):
+    positionA = buildingA.getPosition()
+    positionB = buildingB.getPosition()
+    minDist = 200
+    xRangeA = (positionA[BOTTOMLEFT].getX(),
+                        positionA[BOTTOMRIGHT].getX())
+    yRangeA = (positionA[BOTTOMLEFT].getY(),
+                        positionA[TOPLEFT].getY())
+                        
+    for i in [BOTTOMLEFT, BOTTOMRIGHT, TOPLEFT, TOPRIGHT]:
+        if xRangeA[0] < positionB[i].getX() < xRangeA[1]:
+            for j in [BOTTOMLEFT, BOTTOMRIGHT, TOPLEFT, TOPRIGHT]:
+                dist = abs(positionB[i].getY() - positionA[j].getY())
+                if dist < minDist:
+                    minDist = dist
+        elif yRangeA[0] < positionB[i].getY() < yRangeA[1]:
+            for j in [BOTTOMLEFT, BOTTOMRIGHT, TOPLEFT, TOPRIGHT]:
+                dist = abs(positionB[i].getX() - positionA[j].getX())
+                if dist < minDist:
+                    minDist = dist
+        else:
+            for j in [BOTTOMLEFT, BOTTOMRIGHT, TOPLEFT, TOPRIGHT]:
+                distX = positionA[i].getX() - positionB[j].getX()
+                distY = positionA[i].getY() - positionB[j].getY()
+                dist = math.sqrt(distX**2+distY**2)
+                if dist < minDist:
+                    minDist = dist
+    return minDist
+        
+class Position(object):
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+    def getX(self):
+        return self.x
+    def getY(self):
+        return self.y
+ 
+# Area is a suboptimal name; choose different name.
+class District(object):
+    def __init__(self, width=120, height=160):
+        self.width = int(round(width))
+        self.height = int(round(height))
+    def getDistrictWidth(self):
+        return self.width
+    def getDistrictHeight(self):
+        return self.height
+    def startPos(self, minSpace, width, length):
+        # Find out in what corner the origin of the visualization
+        # is situated.
+        #
+        # Currently: assuming the origin is situated in the
+        # bottom left corner.
+        #
+        # Confirmed, the bottom left corner is the origin of the
+        # visualization.
+        bottomLeftCorner = Position(minSpace, minSpace)
+        bottomRightCorner = Position(minSpace + width, minSpace)
+        topLeftCorner = Position(minSpace, minSpace + length)
+        topRightCorner = Position(minSpace + width, minSpace + length)
+        return [bottomLeftCorner, 
+                bottomRightCorner,
+                topLeftCorner,
+                topRightCorner]
+    def isPosInRoom(self, pos):
+        x = pos.getX()
+        y = pos.getY()
+        if 0 <= x <= self.width and 0 <= y <= self.height:
+            return True
+        else:
+            return False
+            
+class House(object):
+    def __init__(self, width, length, value, valueIncrease, minSpace, district, houseType):
+        self.width = width
+        self.length = length
+        self.value = float(value)
+        self.valueIncrease = float(valueIncrease)
+        self.minSpace = minSpace
+        self.district = district
+        self.position = district.startPos(minSpace, width, length)
+        self.houseType = houseType
+    def getPosition(self):
+        return self.position
+    def rotateInit(self):
+        self.position = district.startPos(self.minSpace, self.length, self.width)
+    def rotateCenter(self):
+        posList = self.position
+        xMiddle = (self.position[BOTTOMLEFT].getX() + self.position[BOTTOMRIGHT].getX())/2
+        yMiddle = (self.position[BOTTOMLEFT].getY() + self.position[TOPLEFT].getY())/2
+##        middle = self.getCenter()
+        self.position = [Position(xMiddle - length/2, yMiddle - width/2),
+                         Position(xMiddle + length/2, yMiddle - width/2),
+                         Position(xMiddle - length/2, yMiddle + width/2),
+                         Position(xMiddle + length/2, yMiddle + width/2)]
+        self.width = length
+        self.length = width
+    def getCenter(self):
+        centerX = (self.position[BOTTOMLEFT].getX() + self.position[BOTTOMRIGHT].getX())/2
+        centerY = (self.position[BOTTOMLEFT].getY() + self.position[TOPLEFT].getY())/2
+        return Position(centerX, centerY)
+    def distCenter(self):
+        centerX, centerY = self.getCenter().getX, self.getCenter().getY
+        return math.sqrt((80 - centerX())**2 + (60 - centerY())**2)
+    def overlap(self, houseList):
+##        houseListWithout = houseList
+##        houseListWithout.remove(self)
+##        print houseListWithout, len(houseListWithout)
+        #check overlap1
+        overlap = False
+        positionA = self.getPosition()
+        xRangeA = (positionA[BOTTOMLEFT].getX(),
+                    positionA[BOTTOMRIGHT].getX())
+        yRangeA = (positionA[BOTTOMLEFT].getY(),
+                    positionA[TOPLEFT].getY())
+        for house in houseList:
+            positionB = house.getPosition()
+            for i in [BOTTOMLEFT, BOTTOMRIGHT, TOPLEFT, TOPRIGHT]:
+                if (xRangeA[0] <= positionB[i].getX() <= xRangeA[1] and yRangeA[0] <= positionB[i].getY() <= yRangeA[1]):
+                    overlap = True
+        #check overlap2
+        positionB = self.getPosition()
+        for house in houseList:
+            positionA = house.getPosition()
+            xRangeA = (positionA[BOTTOMLEFT].getX(),
+                        positionA[BOTTOMRIGHT].getX())
+            yRangeA = (positionA[BOTTOMLEFT].getY(),
+                        positionA[TOPLEFT].getY())
+            for i in [BOTTOMLEFT, BOTTOMRIGHT, TOPLEFT, TOPRIGHT]:
+                if (xRangeA[0] <= positionB[i].getX() <= xRangeA[1] and yRangeA[0] <= positionB[i].getY() <= yRangeA[1]):
+                    overlap = True
+        return overlap
+    
+    def overlapVrij(self, houseList):
+        #check overlap1
+        overlap = False
+        positionA = self.getPosition()
+        space = self.minSpace
+        xRangeA = (positionA[BOTTOMLEFT].getX() - space,
+                    positionA[BOTTOMRIGHT].getX() + space)
+        yRangeA = (positionA[BOTTOMLEFT].getY() - space,
+                    positionA[TOPLEFT].getY()+ space)
+
+        for house in houseList:
+            positionB = house.getPosition()
+            for i in [BOTTOMLEFT, BOTTOMRIGHT, TOPLEFT, TOPRIGHT]:
+                if (xRangeA[0] < positionB[i].getX() < xRangeA[1] and yRangeA[0] < positionB[i].getY() < yRangeA[1]):
+                    overlap = True
+
+        #check overlap2
+        positionB = self.getPosition()
+        for house in houseList:
+            positionA = house.getPosition()
+            space = house.minSpace
+            xRangeA =(positionA[BOTTOMLEFT].getX()- space,
+                    positionA[BOTTOMRIGHT].getX()+ space)
+            yRangeA = (positionA[BOTTOMLEFT].getY()- space,
+                    positionA[TOPLEFT].getY()+ space)
+            for i in [BOTTOMLEFT, BOTTOMRIGHT, TOPLEFT, TOPRIGHT]:
+                if (xRangeA[0] < positionB[i].getX() < xRangeA[1] and yRangeA[0] < positionB[i].getY() < yRangeA[1]):
+                    overlap = True
+        return overlap
+
+    def calcVrij(self, houseList):
+        houseList = self.excludeHouseFromList(houseList)
+        houseDistList = []
+        for house in houseList[:]:
+            dist = minDistance(self, house) - self.minSpace - house.minSpace
+            if  dist < 0:
+                dist = 0
+            houseDistList.append(float(dist))
+        return float(min(houseDistList))
+
+    def calcValue(self, houseList):
+        houseList = self.excludeHouseFromList(houseList)
+        houseValList = []
+        vrij = self.calcVrij(houseList)
+        increase = self.valueIncrease
+        value = self.value
+        value2 =  value * (1 + increase * vrij)
+        return float(value2)
+    
+    def excludeHouseFromList(self, houseList):
+        houseListWithout = []
+        for i in houseList:
+            if self != i:
+                houseListWithout.append(i)
+        return houseListWithout
+    
+    def calcPosition(self, bottomLeftCorner):
+        self.position = [bottomLeftCorner,
+                          Position(bottomLeftCorner.getX() + self.width,
+                                   bottomLeftCorner.getY()),
+                          Position(bottomLeftCorner.getX(),
+                                   bottomLeftCorner.getY() + self.length),
+                          Position(bottomLeftCorner.getX() + self.width,
+                                   bottomLeftCorner.getY() + self.length)]
+        return self.position
+                    
+    def move(self, direction, moveDist):
+        posList = self.position
+        for point in posList:
+            point[direction] = point[direction] - moveDist
+
+class Maison(House):
+  def __init__(self, width, length, value, valueIncrease, minSpace, district):
+    self.width = width
+    self.length = length
+    self.value = value
+    self.valueIncrease = valueIncrease
+    self.minSpace = minSpace
+    self.district = area
+    self.position = district.startPos(minSpace, width, length)
+
+
+##def testOverlap():
+##  region = District()
+##  A = House(1, 2, 'value', 'valueincrease', 0, region)
+##  B = House(1, 2, 'value', 'valueincrease', 5, region)
+##  print overlap(A, B)
+  
+##testOverlap()
+
+def testMinDistance():
+    region = District()
+    A = House(1, 2, 'value', 'valueincrease', 0, region)
+    B = House(1, 2, 'value', 'valueincrease', 3, region)
+    #print "House A position:", A.getPosition().getX(), A.getPosition().getY()
+    print minDistance(A, B)
+
+##testMinDistance()
+
+# Amstelhaege Heuristieken 2014
+
+def calcTotalVrij(houseList):
+    vrij = 0
+    for house in houseList:
+        vrij += house.calcVrij(houseList)
+    return round(vrij, 2)
+
+def calcTotalValue(houseList):
+    totalValue = 0
+    for house in houseList:
+        totalValue += house.calcValue(houseList)
+    return round(totalValue, 2)
+
+def calcTotalCenterDist(houseList, houseType):
+    totalCenterDist = 0
+    lenList = len(houseList)
+    if houseType == "total":
+        for house in houseList:
+            totalCenterDist += house.distCenter()
+    if houseType == "maison":
+        for house in houseList[:int(lenList*0.15)]:
+            totalCenterDist += house.distCenter()
+    if houseType == "bungalow":
+        for house in houseList[int(lenList*0.15):int(lenList*0.4)]:
+            totalCenterDist += house.distCenter()
+    if houseType == "eengezins":
+        for house in houseList[int(lenList*0.4):]:
+            totalCenterDist += house.distCenter()
+    return int(totalCenterDist)
+
+# init district and houses
+def inithouse(variant):
+        # init district
+        district = District()
+        houselist = []
+        # init maison
+        for j in xrange(int(0.15*variant)):
+                maison = House(11, 10.5, 610, 0.06, 6, district, "maison")
+                houselist.append(maison)
+        # init bungalows
+        for j in xrange(int(0.25*variant)):
+                bungalow = House(10, 7.5, 399, 0.04, 3, district, "bungalow")
+                houselist.append(bungalow)
+        # init eengezinswoningen
+        for j in xrange(int(0.60*variant)):
+                eengezins = House(8, 8, 285, 0.03, 2, district, "eengezins")
+                houselist.append(eengezins)
+        return houselist
+
+# change starting positions     
+def changestartpos(houselist, variant, placement):
+        # check input variables
+    if placement != "random" and placement != "seggregation" and placement != "corner" and placement != "compactCorner":
+        print "InputError"
+        return houselist
+        # init houses at random points
+    if placement == "random":
+            for i, house in enumerate(houselist):
+                while house.overlap(houselist[:i]) or house.overlap(houselist[i+1:]) or house.overlapVrij(houselist[:i]) or house.overlapVrij(houselist[i+1:]):
+                    bottomLeftCorner = Position(random.uniform(0 + house.minSpace, 120 - house.width - house.minSpace),
+                                                 random.uniform(0 + house.minSpace,160 - house.length - house.minSpace))
+                    house.position = house.calcPosition(bottomLeftCorner)
+            return houselist
+        # init same houses together and seperated from others
+    elif placement == "seggregation":
+            for i in xrange(int(0.15*variant)):
+                    house = houselist[i]
+                    while house.overlap(house.excludeHouseFromList(houselist[:])) or house.overlapVrij(house.excludeHouseFromList(houselist[:])): 
+                        bottomLeftCorner = Position(random.uniform(0, 120-house.width-house.minSpace),
+                                                     random.uniform(house.width + house.minSpace,160/3))
+                        house.position = house.calcPosition(bottomLeftCorner)
+                    houselist[i] = house
+            
+            for i in xrange(int(0.25*variant)):
+                    house = houselist[i+int(0.15*variant)]
+                    while house.overlap(house.excludeHouseFromList(houselist[:])) or house.overlapVrij(house.excludeHouseFromList(houselist[:])):
+                        bottomLeftCorner = Position(random.uniform(0, 120-house.width-house.minSpace),
+                                                    random.uniform(160/3,2*160/3))
+                        house.position = house.calcPosition(bottomLeftCorner)
+                    houselist[int (i+0.15*variant)] = house
+            for i in xrange(int(0.60*variant)):
+                    var = 0
+                    house = houselist[i+int(0.15*variant+0.25*variant)]
+                    while house.overlap(house.excludeHouseFromList(houselist[:])) or house.overlapVrij(house.excludeHouseFromList(houselist[:])) or var == 0:
+                        bottomLeftCorner = Position(random.uniform(0, 120-house.width-house.minSpace),
+                                     random.uniform(2*160/3,160-house.length-house.minSpace))
+                        house.position = house.calcPosition(bottomLeftCorner)
+                        var = 1
+                    houselist[i+int (0.15*variant+0.25*variant)] = house
+                    
+            return houselist
+        # init houses with maisons in the corner rest random.
+    elif placement == "corner":
+            bottomLeftCornerList = [ [6,6],[120 - 6 - 11, 6],[ 6, 160 - 6 - 10.5 ],[120 - 3 - 10, 160 - 3 - 7.5 ]]
+            for i in xrange(4):
+                    # variant 20 has 3 maisons, so we take 1 bungalow in the bottom left corner, so we start at -4 + i instead of - i
+                    house = houselist[i]
+                    bottomLeftCorner = Position(bottomLeftCornerList[i][0], bottomLeftCornerList[i][1])
+                    house.position = house.calcPosition(bottomLeftCorner)
+                    houselist[i] = house
+            for i in xrange(variant - 4):
+                house = houselist[i+4]
+                while house.overlap(house.excludeHouseFromList(houselist[:])) or house.overlapVrij(house.excludeHouseFromList(houselist[:])): 
+
+                    bottomLeftCorner = Position(random.uniform(0 + house.minSpace,120-house.width-house.minSpace),
+                                 random.uniform(0 + house.minSpace,160-house.length-house.minSpace))
+                    house.position = house.calcPosition(bottomLeftCorner)
+                    houselist[i+4] = house
+            return houselist
+    elif placement == "compactCorner":
+        bottomLeftCornerList = [ [6,6],[120 - 6 - 11, 6],[ 6, 160 - 6 - 10.5 ],[120 - 3 - 10, 160 - 3 - 7.5 ]]
+        for i in range(4):
+            house = houselist[i]
+            bottomLeftCorner = Position(bottomLeftCornerList[i][0], bottomLeftCornerList[i][1])
+            house.position = house.calcPosition(bottomLeftCorner)
+        for i in range(4):
+            house = houselist[i+4]
+            bottomLeftCorner = Position(bottomLeftCornerList[3][0], bottomLeftCornerList[3][1]-(i+1)*15.5)
+            house.position = house.calcPosition(bottomLeftCorner)
+            houselist[i+4] = house
+        for i in range(6):
+            house = houselist[i+8]
+            bottomLeftCorner = Position(bottomLeftCornerList[3][0] - 11 , bottomLeftCornerList[3][1]+.5 -i*10)
+            house.position = house.calcPosition(bottomLeftCorner)
+        for i in range(6):
+            house = houselist[i+14]
+            bottomLeftCorner = Position(bottomLeftCornerList[3][0] - 21 , bottomLeftCornerList[3][1]+.5 -i*10)
+            house.position = house.calcPosition(bottomLeftCorner)
+        for i in range(0):
+            house = houselist[i+18]
+            bottomLeftCorner = Position(bottomLeftCornerList[3][0] - 31 , bottomLeftCornerList[3][1]+.5 -i*10)
+            house.position = house.calcPosition(bottomLeftCorner)
+        return houselist
+            
+
+
+def doIterations():
+    vrijList = []
+    valueList = []
+    houseListList = []
+    vrijDict = {}
+    valueDict = {}
+    iterations = 5000
+    for i in range(iterations):
+        houseNum = 20
+        houseList = inithouse(houseNum)
+        houseList = changestartpos(houseList, houseNum, "corner")
+        totalVrij = round(calcTotalVrij(houseList),2)
+        totalValue = round(calcTotalValue(houseList),2)
+        vrijDict[totalVrij] = [houseList, totalValue]
+        valueDict[totalValue] = [houseList, totalVrij]
+        vrijList.append(totalVrij)
+        valueList.append(totalValue)
+##        print vrijList[i], valueList[i]
+        if (i % 1000) == 0 and i != 0:
+            print i
+            print ["Vrij", "Value", "Center Dist Mai", "Center Dist Eengez"]
+            print [max(vrijList), vrijDict[max(vrijList)][1], calcTotalCenterDist(vrijDict[max(vrijList)][0], "maison"), calcTotalCenterDist(vrijDict[max(vrijList)][0], "eengezins")]
+            print [valueDict[max(valueList)][1], max(valueList), calcTotalCenterDist(valueDict[max(valueList)][0], "maison"), calcTotalCenterDist(valueDict[max(valueList)][0], "eengezins")]
+##            AmstelVisualization(vrijDict[max(vrijList)][0], 120, 160, max(vrijList), vrijDict[max(vrijList)][1])
+##            time.sleep(5)
+##            AmstelVisualization(valueDict[max(valueList)][0], 120, 160, valueDict[max(valueList)][1], max(valueList))
+    print max(vrijList), max(valueList)
+    AmstelVisualization(vrijDict[max(vrijList)][0], 120, 160, max(vrijList), vrijDict[max(vrijList)][1])
+    time.sleep(5)
+    AmstelVisualization(valueDict[max(valueList)][0], 120, 160, valueDict[max(valueList)][1], max(valueList))
+    
+def makeHistogram():
+    BBDict = {}
+    for o,variant in enumerate(["random", "corner"]):
+        bestVrijList = []
+        bestValuesList = []
+        maisonDistList = []
+        eenDistList = []
+        eenValueDistDict = {}
+        for i in range(20):
+            print i
+            vrijList = []
+            valueList = []
+            houseListList = []
+            vrijDict = {}
+            valueDict = {}
+            for j in range(1000):
+                houseNum = 20
+                houseList = inithouse(houseNum)
+                houseList = changestartpos(houseList, houseNum, variant)
+                totalVrij = calcTotalVrij(houseList)
+                totalValue = calcTotalValue(houseList)
+                vrijDict[totalVrij] = [houseList, totalValue]
+                valueDict[totalValue] = [houseList, totalVrij]
+                vrijList.append(totalVrij)
+                valueList.append(totalValue)
+            maisonDistList.append(calcTotalCenterDist(vrijDict[max(vrijList)][0], "maison"))
+            eenDistList.append(calcTotalCenterDist(valueDict[max(valueList)][0], "eengezins"))
+            bestValuesList.append(max(valueList))
+    ##        print calcTotalCenterDist(valueDict[max(valueList)][0], "eengezins")
+    ##        print valueDict[max(valueList)][0]
+    ##        print calcTotalCenterDist(vrijDict[max(vrijList)][0], "maison")
+            eenValueDistDict[calcTotalCenterDist(valueDict[max(valueList)][0], "eengezins")] = max(valueList)
+            BBDict[max(valueList)] = valueDict[max(valueList)][0]
+##            
+
+            
+
+    ##    pylab.hist(maisonDistList, 50)
+    ##    pylab.title("Dist of Maisons") 
+    ##    pylab.xlabel('Total Distance of Maisons to Center of Area') 
+    ##    pylab.ylabel('Amount')
+    ##    pylab.show()
+    ##    fig = pylab.figure()
+    ##    fig.add_subplot(111)
+        
+        if o == 0:
+            xr =  array(eenDistList[:])
+            Ar = array([ xr, ones(len(eenDistList))])
+            yr = bestValuesList
+            wr = linalg.lstsq(Ar.T,yr)[0]
+            liner = wr[0]*xr+wr[1]
+            pylab.plot(xr,liner,'r-',xr,yr,'o')
+        else:
+            xc = array(eenDistList[:])
+            Ac = array([ xc, ones(len(eenDistList))])
+            yc = bestValuesList[:]
+            wc = linalg.lstsq(Ac.T,yc)[0]
+            linec = wc[0]*xc+wc[1]
+            pylab.plot(xc,linec,'r-',xc,yc,'o')
+    print max(BBDict.keys())
+    AmstelVisualization(BBDict[max(BBDict.keys())], 120, 160, 0, max(BBDict.keys()))        
+    pylab.show()  
+##        if variant == "random":
+##            lab = "Random"
+##            plt.scatter(eenDistList, bestValuesList , label = lab)
+##        else:
+##            lab = "Corner"
+##            plt.scatter(eenDistList, bestValuesList, marker = '+' , label = lab)
+##        
+##        pylab.title('Distance of Eengezins Houses for best Values out of 100 random placements') 
+##        pylab.xlabel('Dist to center of eengezins') 
+##        pylab.ylabel('Value of Area')
+##        pylab.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),
+##                         fancybox=True, shadow=True, ncol=5)
+##    pylab.show()
+
+##makeHistogram() 
+            
+doIterations()
+
+    
+# Still missing:
+# - Distance between houses;
+# - Determination of the shortest distance + selection of associated nodes;
+# - 3 different types of houses;
+# - Calculation of region value.
+
+#https://drive.google.com/file/d/0B_Ni3gOka_Q_V0NHRnZmU3NXVm8/edit?usp=sharing
