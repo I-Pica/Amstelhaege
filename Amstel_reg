@@ -467,22 +467,22 @@ def doIterations():
     time.sleep(5)
     AmstelVisualization(valueDict[max(valueList)][0], 120, 160, valueDict[max(valueList)][1], max(valueList))
     
-def makeHistogram():
+def makeStats():
     BBDict = {}
-    for o,variant in enumerate(["random", "corner"]):
+    for o,variant in enumerate(["seggregation", "corner"]):
         bestVrijList = []
         bestValuesList = []
         maisonDistList = []
         eenDistList = []
         eenValueDistDict = {}
-        for i in range(20):
+        for i in range(200):
             print i
             vrijList = []
             valueList = []
             houseListList = []
             vrijDict = {}
             valueDict = {}
-            for j in range(1000):
+            for j in range(100):
                 houseNum = 20
                 houseList = inithouse(houseNum)
                 houseList = changestartpos(houseList, houseNum, variant)
@@ -495,22 +495,8 @@ def makeHistogram():
             maisonDistList.append(calcTotalCenterDist(vrijDict[max(vrijList)][0], "maison"))
             eenDistList.append(calcTotalCenterDist(valueDict[max(valueList)][0], "eengezins"))
             bestValuesList.append(max(valueList))
-    ##        print calcTotalCenterDist(valueDict[max(valueList)][0], "eengezins")
-    ##        print valueDict[max(valueList)][0]
-    ##        print calcTotalCenterDist(vrijDict[max(vrijList)][0], "maison")
-            eenValueDistDict[calcTotalCenterDist(valueDict[max(valueList)][0], "eengezins")] = max(valueList)
+            eenValueDistDict[calcTotalCenterDist(valueDict[max(valueList)][0], "eengezins")] = max(valueList)   
             BBDict[max(valueList)] = valueDict[max(valueList)][0]
-##            
-
-            
-
-    ##    pylab.hist(maisonDistList, 50)
-    ##    pylab.title("Dist of Maisons") 
-    ##    pylab.xlabel('Total Distance of Maisons to Center of Area') 
-    ##    pylab.ylabel('Amount')
-    ##    pylab.show()
-    ##    fig = pylab.figure()
-    ##    fig.add_subplot(111)
         
         if o == 0:
             xr =  array(eenDistList[:])
@@ -518,32 +504,24 @@ def makeHistogram():
             yr = bestValuesList
             wr = linalg.lstsq(Ar.T,yr)[0]
             liner = wr[0]*xr+wr[1]
-            pylab.plot(xr,liner,'r-',xr,yr,'o')
+            pylab.plot(xr,liner,'r-',xr,yr,'o', label = "%s, value = %s x+ %s " %(variant, round(wr[0], 2), round(wr[1])))
+            print wr
         else:
             xc = array(eenDistList[:])
             Ac = array([ xc, ones(len(eenDistList))])
             yc = bestValuesList[:]
             wc = linalg.lstsq(Ac.T,yc)[0]
             linec = wc[0]*xc+wc[1]
-            pylab.plot(xc,linec,'r-',xc,yc,'o')
+            pylab.plot(xc,linec,'b-',xc,yc,'o', label = "%s, value = %s x+ %s " %(variant, round(wc[0], 2), round(wc[1])))
+            print wr
+            
+    pylab.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),
+                         fancybox=True, shadow=True, ncol=5)
     print max(BBDict.keys())
     AmstelVisualization(BBDict[max(BBDict.keys())], 120, 160, 0, max(BBDict.keys()))        
     pylab.show()  
-##        if variant == "random":
-##            lab = "Random"
-##            plt.scatter(eenDistList, bestValuesList , label = lab)
-##        else:
-##            lab = "Corner"
-##            plt.scatter(eenDistList, bestValuesList, marker = '+' , label = lab)
-##        
-##        pylab.title('Distance of Eengezins Houses for best Values out of 100 random placements') 
-##        pylab.xlabel('Dist to center of eengezins') 
-##        pylab.ylabel('Value of Area')
-##        pylab.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),
-##                         fancybox=True, shadow=True, ncol=5)
-##    pylab.show()
 
-##makeHistogram() 
+makeStats() 
             
 doIterations()
 
