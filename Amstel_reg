@@ -469,20 +469,21 @@ def doIterations():
     
 def makeStats():
     BBDict = {}
-    for o,variant in enumerate(["seggregation", "corner"]):
+    for o,variant in enumerate(["random", "seggregation", "corner"]):
         bestVrijList = []
         bestValuesList = []
         maisonDistList = []
         eenDistList = []
         eenValueDistDict = {}
-        for i in range(200):
+        for i in range(10):
             print i
             vrijList = []
             valueList = []
             houseListList = []
             vrijDict = {}
             valueDict = {}
-            for j in range(100):
+            placements = 10
+            for j in range(placements):
                 houseNum = 20
                 houseList = inithouse(houseNum)
                 houseList = changestartpos(houseList, houseNum, variant)
@@ -499,26 +500,26 @@ def makeStats():
             BBDict[max(valueList)] = valueDict[max(valueList)][0]
         
         if o == 0:
-            xr =  array(eenDistList[:])
-            Ar = array([ xr, ones(len(eenDistList))])
-            yr = bestValuesList
-            wr = linalg.lstsq(Ar.T,yr)[0]
-            liner = wr[0]*xr+wr[1]
-            pylab.plot(xr,liner,'r-',xr,yr,'o', label = "%s, value = %s x+ %s " %(variant, round(wr[0], 2), round(wr[1])))
-            print wr
-        else:
-            xc = array(eenDistList[:])
-            Ac = array([ xc, ones(len(eenDistList))])
-            yc = bestValuesList[:]
-            wc = linalg.lstsq(Ac.T,yc)[0]
-            linec = wc[0]*xc+wc[1]
-            pylab.plot(xc,linec,'b-',xc,yc,'o', label = "%s, value = %s x+ %s " %(variant, round(wc[0], 2), round(wc[1])))
-            print wr
-            
+            lsts(eenDistList, bestValuesList, 'r-', variant)
+        if o == 1:
+            lsts(eenDistList, bestValuesList, 'b-', variant)
+        if o == 2:
+            lsts(eenDistList, bestValuesList, 'g-', variant)
+    #compactCorner
+    houseNum = 20
+    houseList = inithouse(houseNum)
+    houseList = changestartpos(houseList, houseNum, "compactCorner")
+    totalValue = round(calcTotalValue(houseList),2)
+    eendist = calcTotalCenterDist((houseList), "eengezins")
+    pylab.plot(eendist, totalValue, marker = '+', label = "comapctCorner")
+##    pylab.plot(0, 0)
     pylab.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),
                          fancybox=True, shadow=True, ncol=5)
     print max(BBDict.keys())
-    AmstelVisualization(BBDict[max(BBDict.keys())], 120, 160, 0, max(BBDict.keys()))        
+    AmstelVisualization(BBDict[max(BBDict.keys())], 120, 160, 0, max(BBDict.keys()))
+    pylab.title('Distance of Eengezins Houses for best Values out of %s random placements' %(placements)) 
+    pylab.xlabel('Dist to center of eengezins') 
+    pylab.ylabel('Value of Area')
     pylab.show()  
 
 makeStats() 
